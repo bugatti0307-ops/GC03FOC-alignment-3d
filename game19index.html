@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天地牆對縫美學 3D - 門與走道完全連動版</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: "Segoe UI", Microsoft JhengHei, sans-serif; background-color: #121212; color: #fff; }
+        #canvas-container { width: 100vw; height: 100vh; }
+        #ui-panel {
+            position: absolute; top: 15px; left: 15px; width: 400px;
+            background: rgba(25, 25, 30, 0.95); backdrop-filter: blur(12px);
+            padding: 16px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.12); max-height: 92vh; overflow-y: auto;
+        }
+        h2 { margin-top: 0; font-size: 16px; color: #4facfe; border-bottom: 1px solid #333; padding-bottom: 8px; }
+        h3 { font-size: 13px; margin: 12px 0 6px 0; border-left: 4px solid; padding-left: 8px; }
+        h3.ceil-hdr { color: #40c4ff; border-color: #40c4ff; }
+        h3.wall-hdr { color: #e0e0e0; border-color: #e0e0e0; }
+        h3.floor-hdr { color: #ffb74d; border-color: #ffb74d; }
+        h3.corr-hdr { color: #a0e418; border-color: #a0e418; }
+        h3.door-hdr { color: #ffd166; border-color: #ffd166; }
+
+        .control-group { margin-bottom: 6px; }
+        label { display: block; font-size: 12px; margin-bottom: 2px; color: #ccc; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #4facfe; }
+        select { width: 100%; background: #2a2a35; color: #fff; border: 1px solid #444; padding: 4px; border-radius: 4px; font-size: 12px; margin-bottom: 6px; }
+        .val-disp { float: right; color: #4facfe; font-weight: bold; }
+        #score-card {
+            background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px;
+            text-align: center; margin-top: 12px; border: 1px solid #333;
+        }
+        #score-val { font-size: 28px; font-weight: bold; color: #00f2fe; }
+        #status-msg { font-size: 12px; color: #ffb703; margin-top: 4px; line-height: 1.4; }
+        .hidden { display: none; }
+    </style>
+    <!-- Three.js & Controls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-panel">
+        <h2>🏗️ 天地牆對縫控制台 (全參數解鎖)</h2>
+
+        <!-- 🚪 獨立門洞開口調整 (擺在最前面，掌控走道位置) -->
+        <h3 class="door-hdr">🚪 門洞開口與走道位置連動</h3>
+        <div class="control-group">
+            <label>門洞/走道中心位置 (X軸) <span class="val-disp" id="doorPos-val">2.00 m</span></label>
+            <input type="range" id="doorPos" min="1.0" max="3.0" step="0.01" value="2.0">
+        </div>
+        <div class="control-group">
+            <label>門洞/走道寬度 <span class="val-disp" id="doorW-val">1.20 m</span></label>
+            <input type="range" id="doorW" min="0.8" max="1.8" step="0.05" value="1.2">
+        </div>
+        <div class="control-group">
+            <label>門洞開口高度 <span class="val-disp" id="doorH-val">2.10 m</span></label>
+            <input type="range" id="doorH" min="1.8" max="2.5" step="0.05" value="2.1">
+        </div>
+
+        <!-- 房間 3 大區域 -->
+        <h3 class="ceil-hdr">🟦 房間天花板</h3>
+        <div class="control-group">
+            <label>材質種類</label>
+            <select id="ceilMatType">
+                <option value="tile">磁磚 / 輕鋼架</option>
+                <option value="paint">漆面 (無縫)</option>
+            </select>
+        </div>
+        <div id="ceilTileControls">
+            <div class="control-group"><label>X 向尺寸 (寬) <span class="val-disp" id="ceilTileX-val">0.60 m</span></label><input type="range" id="ceilTileX" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+            <div class="control-group"><label>Y 向尺寸 (深) <span class="val-disp" id="ceilTileY-val">0.60 m</span></label><input type="range" id="ceilTileY" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+            <div class="control-group"><label>X 軸偏移 <span class="val-disp" id="ceilOffsetX-val">0.00 m</span></label><input type="range" id="ceilOffsetX" min="0" max="0.6" step="0.01" value="0"></div>
+            <div class="control-group"><label>Y 軸偏移 <span class="val-disp" id="ceilOffsetY-val">0.00 m</span></label><input type="range" id="ceilOffsetY" min="0" max="0.6" step="0.01" value="0"></div>
+            <div class="control-group"><label>縫隙尺寸 (溝縫) <span class="val-disp" id="ceilGrout-val">4 mm</span></label><input type="range" id="ceilGrout" min="1" max="10" step="0.5" value="4"></div>
+        </div>
+
+        <h3 class="wall-hdr">⬜ 房間牆面 (含門周邊完全連動)</h3>
+        <div class="control-group">
+            <label>材質種類</label>
+            <select id="wallMatType">
+                <option value="tile">磁磚 / 石材</option>
+                <option value="paint">油漆牆面 (無縫)</option>
+            </select>
+        </div>
+        <div id="wallTileControls">
+            <div class="control-group"><label>X 向尺寸 (寬) <span class="val-disp" id="wallTileX-val">0.60 m</span></label><input type="range" id="wallTileX" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+            <div class="control-group"><label>Y 向尺寸 (高) <span class="val-disp" id="wallTileY-val">0.60 m</span></label><input type="range" id="wallTileY" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+            <div class="control-group"><label>X 軸偏移 <span class="val-disp" id="wallOffsetX-val">0.00 m</span></label><input type="range" id="wallOffsetX" min="0" max="0.6" step="0.01" value="0"></div>
+            <div class="control-group"><label>Y 軸偏移 <span class="val-disp" id="wallOffsetY-val">0.00 m</span></label><input type="range" id="wallOffsetY" min="0" max="0.6" step="0.01" value="0"></div>
+            <div class="control-group"><label>縫隙尺寸 (溝縫) <span class="val-disp" id="wallGrout-val">4 mm</span></label><input type="range" id="wallGrout" min="1" max="10" step="0.5" value="4"></div>
+        </div>
+
+        <h3 class="floor-hdr">🟧 房間地面</h3>
+        <div class="control-group"><label>X 向尺寸 (寬) <span class="val-disp" id="floorTileX-val">0.60 m</span></label><input type="range" id="floorTileX" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+        <div class="control-group"><label>Y 向尺寸 (深) <span class="val-disp" id="floorTileY-val">0.60 m</span></label><input type="range" id="floorTileY" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+        <div class="control-group"><label>X 軸偏移 <span class="val-disp" id="floorOffsetX-val">0.00 m</span></label><input type="range" id="floorOffsetX" min="0" max="0.6" step="0.01" value="0"></div>
+        <div class="control-group"><label>Y 軸偏移 <span class="val-disp" id="floorOffsetY-val">0.00 m</span></label><input type="range" id="floorOffsetY" min="0" max="0.6" step="0.01" value="0"></div>
+        <div class="control-group"><label>縫隙尺寸 (溝縫) <span class="val-disp" id="floorGrout-val">4 mm</span></label><input type="range" id="floorGrout" min="1" max="10" step="0.5" value="4"></div>
+
+        <!-- 走道 3 大區域 -->
+        <h3 class="corr-hdr">🟩 走道天花板</h3>
+        <div class="control-group">
+            <label>材質種類</label>
+            <select id="corrCeilMatType">
+                <option value="tile">磁磚 / 輕鋼架</option>
+                <option value="paint">漆面 (無縫)</option>
+            </select>
+        </div>
+        <div id="corrCeilControls">
+            <div class="control-group"><label>X 向尺寸 (寬) <span class="val-disp" id="corrCeilTileX-val">0.60 m</span></label><input type="range" id="corrCeilTileX" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+            <div class="control-group"><label>Y 向尺寸 (深) <span class="val-disp" id="corrCeilTileY-val">0.60 m</span></label><input type="range" id="corrCeilTileY" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+            <div class="control-group"><label>X 軸偏移 <span class="val-disp" id="corrCeilOffsetX-val">0.00 m</span></label><input type="range" id="corrCeilOffsetX" min="0" max="0.6" step="0.01" value="0"></div>
+            <div class="control-group"><label>Y 軸偏移 <span class="val-disp" id="corrCeilOffsetY-val">0.00 m</span></label><input type="range" id="corrCeilOffsetY" min="0" max="0.6" step="0.01" value="0"></div>
+            <div class="control-group"><label>縫隙尺寸 (溝縫) <span class="val-disp" id="corrCeilGrout-val">4 mm</span></label><input type="range" id="corrCeilGrout" min="1" max="10" step="0.5" value="4"></div>
+        </div>
+
+        <h3 class="corr-hdr">🟩 走道牆面</h3>
+        <div class="control-group">
+            <label>材質種類</label>
+            <select id="corrWallMatType">
+                <option value="tile">磁磚 / 石材</option>
+                <option value="paint">油漆牆面 (無縫)</option>
+            </select>
+        </div>
+        <div id="corrWallControls">
+            <div class="control-group"><label>X 向尺寸 (寬) <span class="val-disp" id="corrWallTileX-val">0.60 m</span></label><input type="range" id="corrWallTileX" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+            <div class="control-group"><label>Y 向尺寸 (高) <span class="val-disp" id="corrWallTileY-val">0.60 m</span></label><input type="range" id="corrWallTileY" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+            <div class="control-group"><label>X 軸偏移 <span class="val-disp" id="corrWallOffsetX-val">0.00 m</span></label><input type="range" id="corrWallOffsetX" min="0" max="0.6" step="0.01" value="0"></div>
+            <div class="control-group"><label>Y 軸偏移 <span class="val-disp" id="corrWallOffsetY-val">0.00 m</span></label><input type="range" id="corrWallOffsetY" min="0" max="0.6" step="0.01" value="0"></div>
+            <div class="control-group"><label>縫隙尺寸 (溝縫) <span class="val-disp" id="corrWallGrout-val">4 mm</span></label><input type="range" id="corrWallGrout" min="1" max="10" step="0.5" value="4"></div>
+        </div>
+
+        <h3 class="corr-hdr">🟩 走道地面</h3>
+        <div class="control-group"><label>X 向尺寸 (寬) <span class="val-disp" id="corrFloorTileX-val">0.60 m</span></label><input type="range" id="corrFloorTileX" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+        <div class="control-group"><label>Y 向尺寸 (深) <span class="val-disp" id="corrFloorTileY-val">0.60 m</span></label><input type="range" id="corrFloorTileY" min="0.3" max="1.5" step="0.05" value="0.6"></div>
+        <div class="control-group"><label>X 軸偏移 <span class="val-disp" id="corrFloorOffsetX-val">0.00 m</span></label><input type="range" id="corrFloorOffsetX" min="0" max="0.6" step="0.01" value="0"></div>
+        <div class="control-group"><label>Y 軸偏移 <span class="val-disp" id="corrFloorOffsetY-val">0.00 m</span></label><input type="range" id="corrFloorOffsetY" min="0" max="0.6" step="0.01" value="0"></div>
+        <div class="control-group"><label>縫隙尺寸 (溝縫) <span class="val-disp" id="corrFloorGrout-val">4 mm</span></label><input type="range" id="corrFloorGrout" min="1" max="10" step="0.5" value="4"></div>
+
+        <div id="score-card">
+            <div>貫穿對縫美學指數</div>
+            <div id="score-val">100</div>
+            <div id="status-msg">計算中...</div>
+        </div>
+    </div>
+
+    <script>
+        // 1. Scene Setup
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111116);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(2.0, 2.3, 4.8);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.target.set(2.0, 1.2, -2.0);
+        controls.update();
+
+        // 2. Tile Shader Material (完整包含 XY 向移動、XY 向尺寸、縫隙尺寸控制)
+        function createTileShaderMaterial(baseColor, lineColor) {
+            return new THREE.ShaderMaterial({
+                uniforms: {
+                    uTileSize: { value: new THREE.Vector2(0.6, 0.6) },
+                    uOffset: { value: new THREE.Vector2(0, 0) },
+                    uBaseColor: { value: new THREE.Color(baseColor) },
+                    uLineColor: { value: new THREE.Color(lineColor) },
+                    uIsPaint: { value: false },
+                    uGroutWidth: { value: 0.004 } // 公尺為單位 (4mm = 0.004m)
+                },
+                vertexShader: `
+                    varying vec3 vWorldPos;
+                    varying vec3 vNormal;
+                    void main() {
+                        vNormal = normalize(normalMatrix * normal);
+                        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                        vWorldPos = worldPos.xyz;
+                        gl_Position = projectionMatrix * viewMatrix * worldPos;
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vWorldPos;
+                    varying vec3 vNormal;
+                    uniform vec2 uTileSize;
+                    uniform vec2 uOffset;
+                    uniform vec3 uBaseColor;
+                    uniform vec3 uLineColor;
+                    uniform bool uIsPaint;
+                    uniform float uGroutWidth;
+
+                    void main() {
+                        if (uIsPaint) {
+                            gl_FragColor = vec4(uBaseColor, 1.0);
+                            return;
+                        }
+
+                        // 依據世界座標法線，精準 mapping 各個牆面與天地
+                        vec2 coord;
+                        if (abs(vNormal.y) > 0.5) {
+                            coord = vWorldPos.xz; // 地面 / 天花板
+                        } else if (abs(vNormal.x) > 0.5) {
+                            coord = vec2(vWorldPos.z, vWorldPos.y); // 兩側牆
+                        } else {
+                            coord = vec2(vWorldPos.x, vWorldPos.y); // 前後牆
+                        }
+
+                        // 磁磚溝縫算式：直接吃輸入的 uOffset (X/Y) 與 uTileSize (X/Y)
+                        vec2 tileCoord = (coord - uOffset) / uTileSize;
+                        vec2 grid = abs(fract(tileCoord - 0.5) - 0.5) * uTileSize;
+                        float line = min(grid.x, grid.y);
+                        
+                        float isGrout = smoothstep(uGroutWidth, 0.0, line);
+                        vec3 finalColor = mix(uBaseColor, uLineColor, isGrout);
+
+                        float light = max(0.4, dot(vNormal, normalize(vec3(0.5, 1.0, 0.8))));
+                        gl_FragColor = vec4(finalColor * light, 1.0);
+                    }
+                `,
+                side: THREE.DoubleSide
+            });
+        }
+
+        // 3. Materials Setup
+        const ceilMat = createTileShaderMaterial(0x81d4fa, 0x0277bd);
+        const wallMat = createTileShaderMaterial(0xe0e0e0, 0x333333);
+        const floorMat = createTileShaderMaterial(0xffcc80, 0xe65100);
+
+        const corrCeilMat = createTileShaderMaterial(0xb3e5fc, 0x0288d1);
+        const corrWallMat = createTileShaderMaterial(0xf5f5f5, 0x424242);
+        const corrFloorMat = createTileShaderMaterial(0xc5e1a5, 0x33691e);
+
+        const doorMat = new THREE.MeshBasicMaterial({ color: 0x5c3a21 });
+
+        // 4. Geometry setup
+        const roomW = 4.0, roomH = 2.8, roomD = 3.5;
+        const corrD = 2.5;
+
+        const planeGeo = new THREE.PlaneGeometry(1, 1);
+        function createMesh(mat) { return new THREE.Mesh(planeGeo, mat); }
+
+        // --- 房間天地牆 ---
+        const ceil = createMesh(ceilMat);
+        ceil.rotation.x = Math.PI / 2;
+        ceil.scale.set(roomW, roomD, 1);
+        ceil.position.set(roomW/2, roomH, -roomD/2);
+        scene.add(ceil);
+
+        const floor = createMesh(floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.scale.set(roomW, roomD, 1);
+        floor.position.set(roomW/2, 0, -roomD/2);
+        scene.add(floor);
+
+        const wallLeft = createMesh(wallMat);
+        wallLeft.rotation.y = Math.PI / 2;
+        wallLeft.scale.set(roomD, roomH, 1);
+        wallLeft.position.set(0, roomH/2, -roomD/2);
+        scene.add(wallLeft);
+
+        const wallRight = createMesh(wallMat);
+        wallRight.rotation.y = -Math.PI / 2;
+        wallRight.scale.set(roomD, roomH, 1);
+        wallRight.position.set(roomW, roomH/2, -roomD/2);
+        scene.add(wallRight);
+
+        // 房間後牆三分塊 (套用 wallMat)
+        const roomWallBackLeft = createMesh(wallMat);
+        const roomWallBackRight = createMesh(wallMat);
+        const roomWallHeader = createMesh(wallMat);
+        scene.add(roomWallBackLeft); scene.add(roomWallBackRight); scene.add(roomWallHeader);
+
+        // --- 走道天地牆 (動態綁定走道整體 Mesh) ---
+        const corrCeil = createMesh(corrCeilMat);
+        corrCeil.rotation.x = Math.PI / 2;
+        scene.add(corrCeil);
+
+        const corrFloor = createMesh(corrFloorMat);
+        corrFloor.rotation.x = -Math.PI / 2;
+        scene.add(corrFloor);
+
+        const corrWallLeft = createMesh(corrWallMat);
+        corrWallLeft.rotation.y = Math.PI / 2;
+        scene.add(corrWallLeft);
+
+        const corrWallRight = createMesh(corrWallMat);
+        corrWallRight.rotation.y = -Math.PI / 2;
+        scene.add(corrWallRight);
+
+        const corrWallBackLeft = createMesh(corrWallMat);
+        const corrWallBackRight = createMesh(corrWallMat);
+        const corrWallHeader = createMesh(corrWallMat);
+        scene.add(corrWallBackLeft); scene.add(corrWallBackRight); scene.add(corrWallHeader);
+
+        // 獨立門框
+        const doorFrameGroup = new THREE.Group();
+        const frameThick = 0.08;
+        const leftJamb = createMesh(doorMat);
+        const rightJamb = createMesh(doorMat);
+        const topJamb = createMesh(doorMat);
+        doorFrameGroup.add(leftJamb); doorFrameGroup.add(rightJamb); doorFrameGroup.add(topJamb);
+        scene.add(doorFrameGroup);
+
+        // 5. Update Loop
+        function updateScene() {
+            const isCeilPaint = document.getElementById('ceilMatType').value === 'paint';
+            const isWallPaint = document.getElementById('wallMatType').value === 'paint';
+            const isCorrCeilPaint = document.getElementById('corrCeilMatType').value === 'paint';
+            const isCorrWallPaint = document.getElementById('corrWallMatType').value === 'paint';
+
+            document.getElementById('ceilTileControls').classList.toggle('hidden', isCeilPaint);
+            document.getElementById('wallTileControls').classList.toggle('hidden', isWallPaint);
+            document.getElementById('corrCeilControls').classList.toggle('hidden', isCorrCeilPaint);
+            document.getElementById('corrWallControls').classList.toggle('hidden', isCorrWallPaint);
+
+            // 讀取 UI 控制參數
+            const doorPos = parseFloat(document.getElementById('doorPos').value);
+            const doorW = parseFloat(document.getElementById('doorW').value);
+            const doorH = parseFloat(document.getElementById('doorH').value);
+
+            // 1. 房間參數
+            const ceilX = parseFloat(document.getElementById('ceilTileX').value);
+            const ceilY = parseFloat(document.getElementById('ceilTileY').value);
+            const ceilOffX = parseFloat(document.getElementById('ceilOffsetX').value);
+            const ceilOffY = parseFloat(document.getElementById('ceilOffsetY').value);
+            const ceilGrout = parseFloat(document.getElementById('ceilGrout').value);
+
+            const wallX = parseFloat(document.getElementById('wallTileX').value);
+            const wallY = parseFloat(document.getElementById('wallTileY').value);
+            const wallOffX = parseFloat(document.getElementById('wallOffsetX').value);
+            const wallOffY = parseFloat(document.getElementById('wallOffsetY').value);
+            const wallGrout = parseFloat(document.getElementById('wallGrout').value);
+
+            const floorX = parseFloat(document.getElementById('floorTileX').value);
+            const floorY = parseFloat(document.getElementById('floorTileY').value);
+            const floorOffX = parseFloat(document.getElementById('floorOffsetX').value);
+            const floorOffY = parseFloat(document.getElementById('floorOffsetY').value);
+            const floorGrout = parseFloat(document.getElementById('floorGrout').value);
+
+            // 2. 走道參數
+            const corrCeilX = parseFloat(document.getElementById('corrCeilTileX').value);
+            const corrCeilY = parseFloat(document.getElementById('corrCeilTileY').value);
+            const corrCeilOffX = parseFloat(document.getElementById('corrCeilOffsetX').value);
+            const corrCeilOffY = parseFloat(document.getElementById('corrCeilOffsetY').value);
+            const corrCeilGrout = parseFloat(document.getElementById('corrCeilGrout').value);
+
+            const corrWallX = parseFloat(document.getElementById('corrWallTileX').value);
+            const corrWallY = parseFloat(document.getElementById('corrWallTileY').value);
+            const corrWallOffX = parseFloat(document.getElementById('corrWallOffsetX').value);
+            const corrWallOffY = parseFloat(document.getElementById('corrWallOffsetY').value);
+            const corrWallGrout = parseFloat(document.getElementById('corrWallGrout').value);
+
+            const corrFloorX = parseFloat(document.getElementById('corrFloorTileX').value);
+            const corrFloorY = parseFloat(document.getElementById('corrFloorTileY').value);
+            const corrFloorOffX = parseFloat(document.getElementById('corrFloorOffsetX').value);
+            const corrFloorOffY = parseFloat(document.getElementById('corrFloorOffsetY').value);
+            const corrFloorGrout = parseFloat(document.getElementById('corrFloorGrout').value);
+
+            // 更新 UI 數據顯示
+            document.getElementById('doorPos-val').innerText = doorPos.toFixed(2) + ' m';
+            document.getElementById('doorW-val').innerText = doorW.toFixed(2) + ' m';
+            document.getElementById('doorH-val').innerText = doorH.toFixed(2) + ' m';
+
+            document.getElementById('ceilTileX-val').innerText = ceilX.toFixed(2) + ' m';
+            document.getElementById('ceilTileY-val').innerText = ceilY.toFixed(2) + ' m';
+            document.getElementById('ceilOffsetX-val').innerText = ceilOffX.toFixed(2) + ' m';
+            document.getElementById('ceilOffsetY-val').innerText = ceilOffY.toFixed(2) + ' m';
+            document.getElementById('ceilGrout-val').innerText = ceilGrout + ' mm';
+
+            document.getElementById('wallTileX-val').innerText = wallX.toFixed(2) + ' m';
+            document.getElementById('wallTileY-val').innerText = wallY.toFixed(2) + ' m';
+            document.getElementById('wallOffsetX-val').innerText = wallOffX.toFixed(2) + ' m';
+            document.getElementById('wallOffsetY-val').innerText = wallOffY.toFixed(2) + ' m';
+            document.getElementById('wallGrout-val').innerText = wallGrout + ' mm';
+
+            document.getElementById('floorTileX-val').innerText = floorX.toFixed(2) + ' m';
+            document.getElementById('floorTileY-val').innerText = floorY.toFixed(2) + ' m';
+            document.getElementById('floorOffsetX-val').innerText = floorOffX.toFixed(2) + ' m';
+            document.getElementById('floorOffsetY-val').innerText = floorOffY.toFixed(2) + ' m';
+            document.getElementById('floorGrout-val').innerText = floorGrout + ' mm';
+
+            document.getElementById('corrCeilTileX-val').innerText = corrCeilX.toFixed(2) + ' m';
+            document.getElementById('corrCeilTileY-val').innerText = corrCeilY.toFixed(2) + ' m';
+            document.getElementById('corrCeilOffsetX-val').innerText = corrCeilOffX.toFixed(2) + ' m';
+            document.getElementById('corrCeilOffsetY-val').innerText = corrCeilOffY.toFixed(2) + ' m';
+            document.getElementById('corrCeilGrout-val').innerText = corrCeilGrout + ' mm';
+
+            document.getElementById('corrWallTileX-val').innerText = corrWallX.toFixed(2) + ' m';
+            document.getElementById('corrWallTileY-val').innerText = corrWallY.toFixed(2) + ' m';
+            document.getElementById('corrWallOffsetX-val').innerText = corrWallOffX.toFixed(2) + ' m';
+            document.getElementById('corrWallOffsetY-val').innerText = corrWallOffY.toFixed(2) + ' m';
+            document.getElementById('corrWallGrout-val').innerText = corrWallGrout + ' mm';
+
+            document.getElementById('corrFloorTileX-val').innerText = corrFloorX.toFixed(2) + ' m';
+            document.getElementById('corrFloorTileY-val').innerText = corrFloorY.toFixed(2) + ' m';
+            document.getElementById('corrFloorOffsetX-val').innerText = corrFloorOffX.toFixed(2) + ' m';
+            document.getElementById('corrFloorOffsetY-val').innerText = corrFloorOffY.toFixed(2) + ' m';
+            document.getElementById('corrFloorGrout-val').innerText = corrFloorGrout + ' mm';
+
+            // 更新 Shader Uniforms (XY向尺寸、XY向平移、縫隙寬度)
+            ceilMat.uniforms.uTileSize.value.set(ceilX, ceilY);
+            ceilMat.uniforms.uOffset.value.set(ceilOffX, ceilOffY);
+            ceilMat.uniforms.uGroutWidth.value = ceilGrout / 1000.0;
+            ceilMat.uniforms.uIsPaint.value = isCeilPaint;
+
+            wallMat.uniforms.uTileSize.value.set(wallX, wallY);
+            wallMat.uniforms.uOffset.value.set(wallOffX, wallOffY);
+            wallMat.uniforms.uGroutWidth.value = wallGrout / 1000.0;
+            wallMat.uniforms.uIsPaint.value = isWallPaint;
+
+            floorMat.uniforms.uTileSize.value.set(floorX, floorY);
+            floorMat.uniforms.uOffset.value.set(floorOffX, floorOffY);
+            floorMat.uniforms.uGroutWidth.value = floorGrout / 1000.0;
+
+            corrCeilMat.uniforms.uTileSize.value.set(corrCeilX, corrCeilY);
+            corrCeilMat.uniforms.uOffset.value.set(corrCeilOffX, corrCeilOffY);
+            corrCeilMat.uniforms.uGroutWidth.value = corrCeilGrout / 1000.0;
+            corrCeilMat.uniforms.uIsPaint.value = isCorrCeilPaint;
+
+            corrWallMat.uniforms.uTileSize.value.set(corrWallX, corrWallY);
+            corrWallMat.uniforms.uOffset.value.set(corrWallOffX, corrWallOffY);
+            corrWallMat.uniforms.uGroutWidth.value = corrWallGrout / 1000.0;
+            corrWallMat.uniforms.uIsPaint.value = isCorrWallPaint;
+
+            corrFloorMat.uniforms.uTileSize.value.set(corrFloorX, corrFloorY);
+            corrFloorMat.uniforms.uOffset.value.set(corrFloorOffX, corrFloorOffY);
+            corrFloorMat.uniforms.uGroutWidth.value = corrFloorGrout / 1000.0;
+
+            // 🚀【重點】走道中心點完全跟隨門洞 X 軸位置 (doorPos) 動態重算！
+            const corrW = doorW; // 走道寬度自動跟門寬同步
+            const corrLeftX = doorPos - corrW/2;
+            const corrRightX = doorPos + corrW/2;
+
+            // 更新走道天地牆三維位置
+            corrCeil.scale.set(corrW, corrD, 1);
+            corrCeil.position.set(doorPos, roomH, -roomD - corrD/2);
+
+            corrFloor.scale.set(corrW, corrD, 1);
+            corrFloor.position.set(doorPos, 0, -roomD - corrD/2);
+
+            corrWallLeft.scale.set(corrD, roomH, 1);
+            corrWallLeft.position.set(corrLeftX, roomH/2, -roomD - corrD/2);
+
+            corrWallRight.scale.set(corrD, roomH, 1);
+            corrWallRight.position.set(corrRightX, roomH/2, -roomD - corrD/2);
+
+            // 房間後牆 (動態裁切開口)
+            const doorLeftX = doorPos - doorW/2;
+            const doorRightX = doorPos + doorW/2;
+
+            const rLeftW = Math.max(0.001, doorLeftX);
+            roomWallBackLeft.scale.set(rLeftW, roomH, 1);
+            roomWallBackLeft.position.set(rLeftW/2, roomH/2, -roomD);
+
+            const rRightW = Math.max(0.001, roomW - doorRightX);
+            roomWallBackRight.scale.set(rRightW, roomH, 1);
+            roomWallBackRight.position.set(doorRightX + rRightW/2, roomH/2, -roomD);
+
+            const headerH = Math.max(0.001, roomH - doorH);
+            roomWallHeader.scale.set(doorW, headerH, 1);
+            roomWallHeader.position.set(doorPos, doorH + headerH/2, -roomD);
+
+            // 走道後牆 (動態開口與位置)
+            const corrZ = -roomD - 0.001;
+            const cLeftW = Math.max(0.001, doorLeftX - corrLeftX);
+            corrWallBackLeft.scale.set(cLeftW, roomH, 1);
+            corrWallBackLeft.position.set(corrLeftX + cLeftW/2, roomH/2, corrZ);
+
+            const cRightW = Math.max(0.001, corrRightX - doorRightX);
+            corrWallBackRight.scale.set(cRightW, roomH, 1);
+            corrWallBackRight.position.set(doorRightX + cRightW/2, roomH/2, corrZ);
+
+            corrWallHeader.scale.set(doorW, headerH, 1);
+            corrWallHeader.position.set(doorPos, doorH + headerH/2, corrZ);
+
+            // 門框動態隨門位置跟隨
+            leftJamb.scale.set(frameThick, doorH, 0.1);
+            leftJamb.position.set(doorLeftX + frameThick/2, doorH/2, -roomD);
+
+            rightJamb.scale.set(frameThick, doorH, 0.1);
+            rightJamb.position.set(doorRightX - frameThick/2, doorH/2, -roomD);
+
+            topJamb.scale.set(doorW, frameThick, 0.1);
+            topJamb.position.set(doorPos, doorH - frameThick/2, -roomD);
+
+            // 評分計算
+            let score = 100;
+            let statusText = [];
+
+            if (!isWallPaint) {
+                if (wallX !== floorX || Math.abs(wallOffX - floorOffX) > 0.01) {
+                    score -= 20; statusText.push("❌ 房間牆面與房間地面未對縫");
+                } else { statusText.push("✨ 房間牆面與地面完全對縫"); }
+            }
+
+            if (!isCorrWallPaint) {
+                if (corrWallX !== corrFloorX || Math.abs(corrWallOffX - corrFloorOffX) > 0.01) {
+                    score -= 20; statusText.push("❌ 走道牆面與走道地面未對縫");
+                } else { statusText.push("✨ 走道牆面與地面完全對縫"); }
+            }
+
+            if (floorX !== corrFloorX || Math.abs(floorOffX - corrFloorOffX) > 0.01) {
+                score -= 20; statusText.push("❌ 房間地磚與走道地磚未貫穿");
+            } else { statusText.push("✨ 房間與走道地磚完美貫穿"); }
+
+            statusText.push("🚀 走道已實體鎖定門洞，移動門洞時走道同步平移！");
+
+            document.getElementById('score-val').innerText = Math.max(0, score);
+            const statusEl = document.getElementById('status-msg');
+            statusEl.innerHTML = statusText.join("<br>");
+            statusEl.style.color = score >= 80 ? "#00f2fe" : "#ffb703";
+        }
+
+        // 事件綁定
+        const inputIds = [
+            'doorPos', 'doorW', 'doorH',
+            'ceilMatType', 'ceilTileX', 'ceilTileY', 'ceilOffsetX', 'ceilOffsetY', 'ceilGrout',
+            'wallMatType', 'wallTileX', 'wallTileY', 'wallOffsetX', 'wallOffsetY', 'wallGrout',
+            'floorTileX', 'floorTileY', 'floorOffsetX', 'floorOffsetY', 'floorGrout',
+            'corrCeilMatType', 'corrCeilTileX', 'corrCeilTileY', 'corrCeilOffsetX', 'corrCeilOffsetY', 'corrCeilGrout',
+            'corrWallMatType', 'corrWallTileX', 'corrWallTileY', 'corrWallOffsetX', 'corrWallOffsetY', 'corrWallGrout',
+            'corrFloorTileX', 'corrFloorTileY', 'corrFloorOffsetX', 'corrFloorOffsetY', 'corrFloorGrout'
+        ];
+        inputIds.forEach(id => {
+            document.getElementById(id).addEventListener('input', updateScene);
+            document.getElementById(id).addEventListener('change', updateScene);
+        });
+
+        updateScene();
+
+        // 渲染循環
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
